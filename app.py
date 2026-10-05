@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 
 st.set_page_config(
     page_title="Customer Segmentation Analytics",
-    page_icon="📊",
+    page_icon="🛍️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -152,14 +152,20 @@ except Exception as error:
     st.stop()
 
 
-st.sidebar.markdown("# Customer Insights")
-st.sidebar.caption("Mall Customer Segmentation")
+st.sidebar.markdown("# 🛍️ Customer Insights")
+st.sidebar.caption("📊 Mall Customer Segmentation")
 st.sidebar.markdown("---")
-st.sidebar.markdown("### Navigation")
+st.sidebar.markdown("### 🧭 Navigation")
 
 page = st.sidebar.radio(
     "Select a page",
     ["Overview", "Segment Profiles", "Data Explorer", "Model Evaluation"],
+    format_func=lambda item: {
+        "Overview": "🏠 Overview",
+        "Segment Profiles": "👥 Segment Profiles",
+        "Data Explorer": "🔎 Data Explorer",
+        "Model Evaluation": "📈 Model Evaluation",
+    }[item],
     label_visibility="collapsed",
 )
 
@@ -171,7 +177,7 @@ cluster_count = st.sidebar.slider(
     value=5,
     help="Choose how many customer groups K-Means should create.",
 )
-st.sidebar.info("Clustering features: annual income and spending score.")
+st.sidebar.info("📌 Features: annual income and spending score.")
 
 
 # Scale the selected features and fit K-Means.
@@ -206,7 +212,7 @@ data["Segment"] = data["Cluster"].map(segment_names)
 current_silhouette = silhouette_score(scaled_features, data["Cluster"])
 
 
-st.title("Customer Segmentation Analytics")
+st.title("🛍️ Customer Segmentation Analytics")
 st.caption(
     "Analyze customer groups by annual income and spending behavior "
     "using K-Means clustering."
@@ -214,19 +220,19 @@ st.caption(
 
 
 if page == "Overview":
-    st.subheader("Business Overview")
+    st.subheader("📊 Business Overview")
 
     metric_1, metric_2, metric_3 = st.columns(3)
     metric_1.metric("Customer records", f"{len(data):,}")
     metric_2.metric("Customer segments", cluster_count)
     metric_3.metric("Silhouette score", f"{current_silhouette:.3f}")
 
-    st.markdown("### Customer segment map")
+    st.markdown("### 🎯 Customer segment map")
     chart = make_cluster_chart(data, segment_names)
     st.pyplot(chart, use_container_width=True)
     plt.close(chart)
 
-    st.markdown("### Segment snapshot")
+    st.markdown("### 📋 Segment snapshot")
     overview_table = cluster_profile.copy()
     overview_table.insert(
         0,
@@ -242,7 +248,7 @@ if page == "Overview":
 
 
 elif page == "Segment Profiles":
-    st.subheader("Customer Segment Profiles")
+    st.subheader("👥 Customer Segment Profiles")
     st.write(
         "Each segment summarizes customers grouped by similar income and "
         "spending patterns. Recommendations are example business actions."
@@ -267,7 +273,7 @@ elif page == "Segment Profiles":
             )
             st.write(f"**Suggested business action:** {action}")
 
-    st.markdown("### Profile summary")
+    st.markdown("### 📋 Profile summary")
     profile_table = cluster_profile.copy()
     profile_table.insert(
         0,
@@ -278,7 +284,7 @@ elif page == "Segment Profiles":
 
 
 elif page == "Data Explorer":
-    st.subheader("Explore Customer Data")
+    st.subheader("🔎 Explore Customer Data")
     st.write(
         "Review the source data, inspect feature distributions, and download "
         "customer records with their assigned clusters."
@@ -308,12 +314,12 @@ elif page == "Data Explorer":
             column.pyplot(fig, use_container_width=True)
             plt.close(fig)
 
-    st.markdown("### Customer records and assigned segments")
+    st.markdown("### 🧾 Customer records and assigned segments")
     st.dataframe(data, use_container_width=True, hide_index=True)
 
     csv_data = data.to_csv(index=False).encode("utf-8")
     st.download_button(
-        "Download segmented customer data",
+        "⬇️ Download segmented customer data",
         data=csv_data,
         file_name="customers_with_segments.csv",
         mime="text/csv",
@@ -321,7 +327,7 @@ elif page == "Data Explorer":
 
 
 elif page == "Model Evaluation":
-    st.subheader("Model Evaluation")
+    st.subheader("📈 Model Evaluation")
     st.write(
         "K-Means is fitted separately for each value of k. A higher Silhouette "
         "score and a lower Davies–Bouldin score generally indicate better-separated "
@@ -387,7 +393,7 @@ elif page == "Model Evaluation":
     st.pyplot(fig, use_container_width=True)
     plt.close(fig)
 
-    st.markdown("### PCA cluster projection")
+    st.markdown("### 🧭 PCA cluster projection")
     pca_projection = PCA(n_components=2).fit_transform(scaled_features)
 
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -407,10 +413,10 @@ elif page == "Model Evaluation":
     st.pyplot(fig, use_container_width=True)
     plt.close(fig)
 
-    st.markdown("### Evaluation results")
+    st.markdown("### 📋 Evaluation results")
     st.dataframe(evaluation.round(3), use_container_width=True, hide_index=True)
 
-    with st.expander("Methodology"):
+    with st.expander("ℹ️ Methodology"):
         st.write("1. Load the Mall Customers CSV and check required fields.")
         st.write("2. Remove duplicate rows and records missing clustering features.")
         st.write("3. Scale annual income and spending score with StandardScaler.")
