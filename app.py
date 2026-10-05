@@ -1,248 +1,409 @@
-import streamlit as st
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
+import streamlit as st
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import silhouette_score, davies_bouldin_score
 from sklearn.decomposition import PCA
+from sklearn.metrics import davies_bouldin_score, silhouette_score
+from sklearn.preprocessing import StandardScaler
+
 
 st.set_page_config(
-    page_title="Mall Customer Segmentation",
-    page_icon="🛍️",
-    layout="wide"
+    page_title="Customer Segmentation Analytics",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<style>
-.block-container {padding-top: 2rem; padding-bottom: 2rem;}
-[data-testid="stMetric"] {
-    background: #172554;
-    padding: 16px;
-    border-radius: 12px;
-    border: 1px solid #334155;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-@st.cache_data
-def load_data():
-    df = pd.read_csv("Mall_Customers.csv")
-    df.columns = df.columns.str.strip()
-    df = df.rename(columns={"Genre": "Gender"})
-
-    required = ["Annual Income (k$)", "Spending Score (1-100)"]
-    missing = [col for col in required if col not in df.columns]
-    if missing:
-        raise ValueError(f"CSV mein required columns nahi mile: {missing}")
-
-    df = df.dropna(subset=required).copy()
-    return df
-
-
-try:
-    original_df = load_data()
-except Exception as error:
-    st.error(f"Dataset load nahi hua: {error}")
-    st.stop()
+# Professional styling for the application and sidebar
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        [data-testid="stSidebar"] {
+            background-color: #111827;
+        }
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+            color: #F3F4F6;
+        }
+        [data-testid="stMetric"] {
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            padding: 18px;
+            border-radius: 12px;
+        }
+        div.stButton > button, div.stDownloadButton > button {
+            border-radius: 8px;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 INCOME = "Annual Income (k$)"
 SPENDING = "Spending Score (1-100)"
-features = [INCOME, SPENDING]
+FEATURES = [INCOME, SPENDING]
 
-st.sidebar.title("🛍️ Customer Insights")
-st.sidebar.caption("Mall Customer Segmentation")
-page = st.sidebar.radio(
-    "Menu",
-    ["Dashboard", "Customer Segments", "Explore Data", "Model & Method"]
-)
-k = st.sidebar.slider("Number of clusters (k)", 2, 10, 5)
-st.sidebar.info("Clustering features: annual income and spending score")
-
-
-df = original_df.copy()
-X = StandardScaler().fit_transform(df[features])
-model = KMeans(n_clusters=k, n_init=10, random_state=42)
-df["Cluster"] = model.fit_predict(X)
-silhouette = silhouette_score(X, df["Cluster"])
-
-centers = df.groupby("Cluster").agg(
-    Customers=("Cluster", "size"),
-    Avg_Income=(INCOME, "mean"),
-    Avg_Spending=(SPENDING, "mean"),
-)
-
-median_income = df[INCOME].median()
-median_spending = df[SPENDING].median()
+SEGMENT_ACTIONS = {
+    "Premium Spenders": (
+        "Consider premium product recommendations, exclusive previews, "
+        "and loyalty benefits."
+    ),
+    "Cautious Affluent": (
+        "Test quality-focused messaging, product education, and targeted offers."
+    ),
+    "Enthusiastic Budget Spenders": (
+        "Consider value bundles, rewards, and promotions that fit their budgets."
+    ),
+    "Budget-Conscious": (
+        "Focus on essential products, clear value, and cost-conscious offers."
+    ),
+}
 
 
-def segment_name(row):
-    high_income = row["Avg_Income"] >= median_income
-    high_spending = row["Avg_Spending"] >= median_spending
+@st.cache_data
+def load_customer_data():
+    data = pd.read_csv("Mall_Customers.csv")
+    data.columns = data.columns.str.strip()
+    data = data.rename(columns={"Genre": "Gender"})
 
-    if high_income and high_spending:
-        return "Premium Spenders"
-    if high_income and not high_spending:
-        return "Cautious Affluent"
-    if not high_income and high_spending:
-        return "Enthusiastic Budget Spenders"
-    return "Budget-Conscious"
+    missing_columns = [column for column in FEATURES if column not in data.columns]
+    if missing_columns:
+        raise ValueError(f"Required columns are missing: {missing_columns}")
 
+    for column in FEATURES:
+        data[column] = pd.to_numeric(data[column], errors="coerce")
 
-centers["Segment"] = centers.apply(segment_name, axis=1)
-segment_names = centers["Segment"].to_dict()
-df["Segment"] = df["Cluster"].map(segment_names)
+    data = data.dropna(subset=FEATURES).drop_duplicates().reset_index(drop=True)
 
+    if len(data) < 10:
+        raise ValueError("At least 10 valid customer records are required.")
 
-st.title("🛍️ Mall Customer Segmentation")
-st.caption(
-    "K-Means clustering se customers ke income aur spending patterns samjho."
-)
+    return data
 
 
-if page == "Dashboard":
-    st.subheader("Project Dashboard")
+def assign_segment_names(profile, median_income, median_spending):
+    """Create readable, unique names from each cluster's average profile."""
+    names = {}
+    used_names = {}
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total customers", f"{len(df)}")
-    col2.metric("Customer groups", f"{k}")
-    col3.metric("Silhouette score", f"{silhouette:.3f}")
+    for cluster, row in profile.iterrows():
+        high_income = row["Average income (k$)"] >= median_income
+        high_spending = row["Average spending score"] >= median_spending
 
-    st.markdown("### Income vs spending clusters")
-    fig, ax = plt.subplots(figsize=(10, 5))
-    for cluster in sorted(df["Cluster"].unique()):
-        group = df[df["Cluster"] == cluster]
+        if high_income and high_spending:
+            base_name = "Premium Spenders"
+        elif high_income and not high_spending:
+            base_name = "Cautious Affluent"
+        elif not high_income and high_spending:
+            base_name = "Enthusiastic Budget Spenders"
+        else:
+            base_name = "Budget-Conscious"
+
+        used_names[base_name] = used_names.get(base_name, 0) + 1
+        suffix = f" #{used_names[base_name]}" if used_names[base_name] > 1 else ""
+        names[cluster] = base_name + suffix
+
+    return names
+
+
+def make_cluster_chart(data, segment_names):
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+
+    for cluster in sorted(data["Cluster"].unique()):
+        group = data[data["Cluster"] == cluster]
         ax.scatter(
             group[INCOME],
             group[SPENDING],
+            s=55,
+            alpha=0.82,
             label=f"Cluster {cluster}: {segment_names[cluster]}",
-            alpha=0.8,
-            s=55
         )
+
     ax.set_xlabel("Annual Income (k$)")
     ax.set_ylabel("Spending Score (1–100)")
-    ax.grid(alpha=0.25)
-    ax.legend()
-    st.pyplot(fig)
-    plt.close(fig)
+    ax.set_title("Customer Groups by Income and Spending")
+    ax.grid(alpha=0.22)
+    ax.legend(loc="best", fontsize=8, frameon=True)
+    fig.tight_layout()
+    return fig
 
-    st.markdown("### Segment summary")
-    st.dataframe(
-        centers.reset_index().rename(columns={"index": "Cluster"}),
-        use_container_width=True,
-        hide_index=True
+
+try:
+    original_data = load_customer_data()
+except Exception as error:
+    st.error(f"Unable to load the customer dataset: {error}")
+    st.stop()
+
+
+st.sidebar.markdown("# Customer Insights")
+st.sidebar.caption("Mall Customer Segmentation")
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Navigation")
+
+page = st.sidebar.radio(
+    "Select a page",
+    [
+        "Overview",
+        "Segment Profiles",
+        "Data Explorer",
+        "Model Evaluation",
+    ],
+    label_visibility="collapsed",
+)
+
+st.sidebar.markdown("---")
+cluster_count = st.sidebar.slider(
+    "Number of clusters (k)",
+    min_value=2,
+    max_value=min(10, len(original_data) - 1),
+    value=5,
+    help="Choose how many customer groups K-Means should create.",
+)
+st.sidebar.info("Clustering features: annual income and spending score.")
+
+# Prepare features, scale them, and fit K-Means.
+data = original_data.copy()
+scaler = StandardScaler()
+scaled_features = scaler.fit_transform(data[FEATURES])
+
+model = KMeans(
+    n_clusters=cluster_count,
+    n_init=10,
+    random_state=42,
+)
+data["Cluster"] = model.fit_predict(scaled_features)
+
+cluster_profile = data.groupby("Cluster").agg(
+    Customers=("Cluster", "size"),
+    **{
+        "Average income (k$)": (INCOME, "mean"),
+        "Average spending score": (SPENDING, "mean"),
+    },
+).round(1)
+
+median_income = data[INCOME].median()
+median_spending = data[SPENDING].median()
+segment_names = assign_segment_names(
+    cluster_profile,
+    median_income,
+    median_spending,
+)
+data["Segment"] = data["Cluster"].map(segment_names)
+
+current_silhouette = silhouette_score(scaled_features, data["Cluster"])
+
+
+st.title("Customer Segmentation Analytics")
+st.caption(
+    "Analyze customer groups by annual income and spending behavior "
+    "using K-Means clustering."
+)
+
+
+# Each menu selection displays only its own page.
+if page == "Overview":
+    st.subheader("Business Overview")
+
+    metric_1, metric_2, metric_3 = st.columns(3)
+    metric_1.metric("Customer records", f"{len(data):,}")
+    metric_2.metric("Customer segments", cluster_count)
+    metric_3.metric("Silhouette score", f"{current_silhouette:.3f}")
+
+    st.markdown("### Customer segment map")
+    chart = make_cluster_chart(data, segment_names)
+    st.pyplot(chart, use_container_width=True)
+    plt.close(chart)
+
+    st.markdown("### Segment snapshot")
+    overview_table = cluster_profile.copy()
+    overview_table.insert(
+        0,
+        "Segment",
+        [segment_names[cluster] for cluster in overview_table.index],
+    )
+    st.dataframe(overview_table, use_container_width=True)
+
+    st.caption(
+        "Segment names are rule-based summaries of cluster averages. "
+        "Review the profiles before using them for business decisions."
     )
 
 
-elif page == "Customer Segments":
-    st.subheader("Customer Segments")
+elif page == "Segment Profiles":
+    st.subheader("Customer Segment Profiles")
     st.write(
-        "Cluster numbers machine ke labels hain. Segment names income aur "
-        "spending averages ko dataset medians se compare karke diye gaye hain."
+        "Each segment summarizes customers grouped by similar income and "
+        "spending patterns. Recommendations are example business actions."
     )
 
-    for cluster, row in centers.iterrows():
+    for cluster, row in cluster_profile.iterrows():
+        segment = segment_names[cluster]
+        action_key = segment.split(" #")[0]
+        action = SEGMENT_ACTIONS.get(action_key, "Review this group for suitable offers.")
+
         with st.container(border=True):
-            st.markdown(f"### Cluster {cluster}: {row['Segment']}")
-            a, b, c = st.columns(3)
-            a.metric("Customers", int(row["Customers"]))
-            b.metric("Average income", f"${row['Avg_Income']:.1f}k")
-            c.metric("Average spending score", f"{row['Avg_Spending']:.1f}")
+            st.markdown(f"### {segment}")
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric("Customers", int(row["Customers"]))
+            col_b.metric("Average income", f"${row['Average income (k$)']:.1f}k")
+            col_c.metric(
+                "Average spending score",
+                f"{row['Average spending score']:.1f}",
+            )
+            st.write(f"**Suggested business action:** {action}")
 
-    st.markdown("### Business interpretation")
-    st.write("- **Premium Spenders:** loyalty rewards aur premium offers.")
-    st.write("- **Cautious Affluent:** quality-focused offers aur product previews.")
-    st.write("- **Enthusiastic Budget Spenders:** bundles aur value promotions.")
-    st.write("- **Budget-Conscious:** low-cost offers aur essentials.")
+    st.markdown("### Profile summary")
+    profile_table = cluster_profile.copy()
+    profile_table.insert(
+        0,
+        "Segment",
+        [segment_names[cluster] for cluster in profile_table.index],
+    )
+    st.dataframe(profile_table, use_container_width=True)
 
 
-elif page == "Explore Data":
-    st.subheader("Explore the customer data")
+elif page == "Data Explorer":
+    st.subheader("Explore Customer Data")
+    st.write(
+        "Review the source data, inspect feature distributions, and download "
+        "the customer records with their assigned clusters."
+    )
 
-    chart_cols = st.columns(3)
-    for col, feature, title in zip(
-        chart_cols,
-        ["Age", INCOME, SPENDING],
-        ["Age distribution", "Annual income distribution", "Spending score distribution"]
-    ):
-        if feature in df.columns:
-            fig, ax = plt.subplots(figsize=(5, 3))
-            ax.hist(df[feature].dropna(), bins=15, color="#4C78A8", edgecolor="white")
+    chart_columns = st.columns(3)
+    distribution_features = [
+        ("Age", "Age distribution"),
+        (INCOME, "Annual income distribution"),
+        (SPENDING, "Spending score distribution"),
+    ]
+
+    for column, (feature, title) in zip(chart_columns, distribution_features):
+        if feature in data.columns:
+            fig, ax = plt.subplots(figsize=(4.5, 3))
+            ax.hist(
+                pd.to_numeric(data[feature], errors="coerce").dropna(),
+                bins=15,
+                color="#2563EB",
+                edgecolor="white",
+            )
             ax.set_title(title)
-            ax.set_ylabel("Customers")
-            col.pyplot(fig)
+            ax.set_ylabel("Customer count")
+            ax.grid(axis="y", alpha=0.2)
+            fig.tight_layout()
+            column.pyplot(fig, use_container_width=True)
             plt.close(fig)
 
-    st.markdown("### Customer records with assigned segments")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.markdown("### Customer records and assigned segments")
+    st.dataframe(data, use_container_width=True, hide_index=True)
 
-    csv = df.to_csv(index=False).encode("utf-8")
+    csv_data = data.to_csv(index=False).encode("utf-8")
     st.download_button(
-        "Download segmented customers CSV",
-        data=csv,
+        "Download segmented customer data",
+        data=csv_data,
         file_name="customers_with_segments.csv",
-        mime="text/csv"
+        mime="text/csv",
     )
 
 
-elif page == "Model & Method":
-    st.subheader("Model evaluation")
+elif page == "Model Evaluation":
+    st.subheader("Model Evaluation")
     st.write(
-        "Har k ke liye K-Means dobara fit hota hai. Silhouette zyada hona "
-        "aur Davies–Bouldin kam hona aam taur par behtar separated clusters "
-        "ka sanket hai. In scores ko business context ke saath interpret karo."
+        "K-Means is fitted separately for each value of k. A higher Silhouette "
+        "score and a lower Davies–Bouldin score generally indicate better-separated "
+        "clusters. Interpret these metrics alongside business context."
     )
 
+    max_test_k = min(10, len(data) - 1)
     evaluation_rows = []
-    for test_k in range(2, min(10, len(df) - 1) + 1):
-        test_model = KMeans(n_clusters=test_k, n_init=10, random_state=42)
-        test_labels = test_model.fit_predict(X)
-        evaluation_rows.append({
-            "k": test_k,
-            "Inertia": test_model.inertia_,
-            "Silhouette": silhouette_score(X, test_labels),
-            "Davies-Bouldin": davies_bouldin_score(X, test_labels),
-        })
+
+    for test_k in range(2, max_test_k + 1):
+        test_model = KMeans(
+            n_clusters=test_k,
+            n_init=10,
+            random_state=42,
+        )
+        test_labels = test_model.fit_predict(scaled_features)
+
+        evaluation_rows.append(
+            {
+                "k": test_k,
+                "Inertia": test_model.inertia_,
+                "Silhouette score": silhouette_score(
+                    scaled_features,
+                    test_labels,
+                ),
+                "Davies-Bouldin score": davies_bouldin_score(
+                    scaled_features,
+                    test_labels,
+                ),
+            }
+        )
 
     evaluation = pd.DataFrame(evaluation_rows)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-    axes[0].plot(evaluation["k"], evaluation["Inertia"], "o-")
-    axes[0].set_title("Elbow: Inertia (lower)")
-    axes[1].plot(evaluation["k"], evaluation["Silhouette"], "o-", color="green")
-    axes[1].set_title("Silhouette (higher)")
-    axes[2].plot(evaluation["k"], evaluation["Davies-Bouldin"], "o-", color="crimson")
-    axes[2].set_title("Davies–Bouldin (lower)")
+    axes[0].plot(evaluation["k"], evaluation["Inertia"], marker="o")
+    axes[0].set_title("Elbow Method")
+    axes[0].set_ylabel("Inertia (lower is better)")
+
+    axes[1].plot(
+        evaluation["k"],
+        evaluation["Silhouette score"],
+        marker="o",
+        color="green",
+    )
+    axes[1].set_title("Silhouette Score")
+    axes[1].set_ylabel("Higher is generally better")
+
+    axes[2].plot(
+        evaluation["k"],
+        evaluation["Davies-Bouldin score"],
+        marker="o",
+        color="crimson",
+    )
+    axes[2].set_title("Davies–Bouldin Score")
+    axes[2].set_ylabel("Lower is generally better")
+
     for ax in axes:
         ax.set_xlabel("Number of clusters (k)")
-        ax.grid(alpha=0.25)
-    st.pyplot(fig)
+        ax.grid(alpha=0.22)
+
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
     plt.close(fig)
 
-    st.markdown("### PCA projection")
-    projection = PCA(n_components=2).fit_transform(X)
-    fig, ax = plt.subplots(figsize=(8, 5))
-    scatter = ax.scatter(
-        projection[:, 0],
-        projection[:, 1],
-        c=df["Cluster"],
+    st.markdown("### PCA cluster projection")
+    pca_projection = PCA(n_components=2).fit_transform(scaled_features)
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.scatter(
+        pca_projection[:, 0],
+        pca_projection[:, 1],
+        c=data["Cluster"],
         cmap="tab10",
-        s=45,
-        alpha=0.85
+        s=48,
+        alpha=0.82,
     )
     ax.set_xlabel("Principal Component 1")
     ax.set_ylabel("Principal Component 2")
-    ax.set_title("Customer clusters projected into 2D")
-    ax.grid(alpha=0.25)
-    st.pyplot(fig)
+    ax.set_title("Customer Groups in Two Dimensions")
+    ax.grid(alpha=0.22)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
     plt.close(fig)
 
-    st.markdown("### Evaluation values")
+    st.markdown("### Evaluation results")
     st.dataframe(evaluation.round(3), use_container_width=True, hide_index=True)
 
-    st.markdown("### Method used")
-    st.write("1. CSV load karke required columns check kiye.")
-    st.write("2. Income aur spending score ko StandardScaler se scale kiya.")
-    st.write("3. K-Means se selected k customer groups banaye.")
-    st.write("4. Silhouette score aur other metrics se clustering evaluate ki.")
+    with st.expander("Methodology"):
+        st.write("1. Load the Mall Customers CSV and check required fields.")
+        st.write("2. Remove duplicate rows and records missing clustering features.")
+        st.write("3. Scale annual income and spending score with StandardScaler.")
+        st.write("4. Fit K-Means using the selected number of clusters.")
+        st.write("5. Compare candidate cluster counts using evaluation metrics.")
+        st.write(
+            "6. Summarize clusters using their average income and spending patterns."
+        )
