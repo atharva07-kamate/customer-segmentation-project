@@ -14,7 +14,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Professional styling for the application and sidebar
 st.markdown(
     """
     <style>
@@ -22,19 +21,32 @@ st.markdown(
             padding-top: 2rem;
             padding-bottom: 2rem;
         }
+
         [data-testid="stSidebar"] {
             background-color: #111827;
         }
+
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
             color: #F3F4F6;
         }
+
         [data-testid="stMetric"] {
             background: #F8FAFC;
+            color: #0F172A !important;
             border: 1px solid #E2E8F0;
             padding: 18px;
             border-radius: 12px;
         }
-        div.stButton > button, div.stDownloadButton > button {
+
+        [data-testid="stMetric"] *,
+        [data-testid="stMetricLabel"],
+        [data-testid="stMetricValue"],
+        [data-testid="stMetricDelta"] {
+            color: #0F172A !important;
+        }
+
+        div.stButton > button,
+        div.stDownloadButton > button {
             border-radius: 8px;
         }
     </style>
@@ -77,7 +89,8 @@ def load_customer_data():
     for column in FEATURES:
         data[column] = pd.to_numeric(data[column], errors="coerce")
 
-    data = data.dropna(subset=FEATURES).drop_duplicates().reset_index(drop=True)
+    data = data.dropna(subset=FEATURES)
+    data = data.drop_duplicates().reset_index(drop=True)
 
     if len(data) < 10:
         raise ValueError("At least 10 valid customer records are required.")
@@ -146,12 +159,7 @@ st.sidebar.markdown("### Navigation")
 
 page = st.sidebar.radio(
     "Select a page",
-    [
-        "Overview",
-        "Segment Profiles",
-        "Data Explorer",
-        "Model Evaluation",
-    ],
+    ["Overview", "Segment Profiles", "Data Explorer", "Model Evaluation"],
     label_visibility="collapsed",
 )
 
@@ -165,7 +173,8 @@ cluster_count = st.sidebar.slider(
 )
 st.sidebar.info("Clustering features: annual income and spending score.")
 
-# Prepare features, scale them, and fit K-Means.
+
+# Scale the selected features and fit K-Means.
 data = original_data.copy()
 scaler = StandardScaler()
 scaled_features = scaler.fit_transform(data[FEATURES])
@@ -204,7 +213,6 @@ st.caption(
 )
 
 
-# Each menu selection displays only its own page.
 if page == "Overview":
     st.subheader("Business Overview")
 
@@ -243,7 +251,10 @@ elif page == "Segment Profiles":
     for cluster, row in cluster_profile.iterrows():
         segment = segment_names[cluster]
         action_key = segment.split(" #")[0]
-        action = SEGMENT_ACTIONS.get(action_key, "Review this group for suitable offers.")
+        action = SEGMENT_ACTIONS.get(
+            action_key,
+            "Review this group for suitable offers.",
+        )
 
         with st.container(border=True):
             st.markdown(f"### {segment}")
@@ -270,7 +281,7 @@ elif page == "Data Explorer":
     st.subheader("Explore Customer Data")
     st.write(
         "Review the source data, inspect feature distributions, and download "
-        "the customer records with their assigned clusters."
+        "customer records with their assigned clusters."
     )
 
     chart_columns = st.columns(3)
@@ -283,8 +294,9 @@ elif page == "Data Explorer":
     for column, (feature, title) in zip(chart_columns, distribution_features):
         if feature in data.columns:
             fig, ax = plt.subplots(figsize=(4.5, 3))
+            values = pd.to_numeric(data[feature], errors="coerce").dropna()
             ax.hist(
-                pd.to_numeric(data[feature], errors="coerce").dropna(),
+                values,
                 bins=15,
                 color="#2563EB",
                 edgecolor="white",
